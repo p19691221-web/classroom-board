@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="在教室觸控黑板或平板瀏覽器直接開的小黑板：多指書寫、打字、計時、抽籤，下課把每頁轉成圖片。">
+<style>html,body{margin:0}img{max-width:100%}</style>
+<title>課堂小黑板</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: toolbar across the top, a 16:10 slate board filling the rest, tools in a right-hand drawer over the board */
+:root{
+  --bg:#e9eeeb; --panel:#fafcfb; --fg:#1b2420; --muted:#56655f; --line:#c9d4ce;
+  --accent:#1f6b52; --accent-fg:#f4faf7; --warn:#b4521f;
+  --slate:#22342c; --slate-edge:#5b4636; --grid:rgba(232,240,235,.09);
+  --chalk-white:#eef3ef; --chalk-yellow:#f4d96b; --chalk-pink:#f19bb0; --chalk-blue:#8cc8f0; --chalk-dim:#93ab9f;
+  --hand:"LXGW WenKai TC","Kaiti TC","STKaiti",serif;
+  --body:"Noto Sans TC",system-ui,-apple-system,"PingFang TC",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1412; --panel:#18201c; --fg:#e2ebe6; --muted:#94a59d; --line:#2b3732;
+  --accent:#6cc5a0; --accent-fg:#0f1412; --warn:#f0925c; --slate-edge:#3e3026; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1412; --panel:#18201c; --fg:#e2ebe6; --muted:#94a59d; --line:#2b3732;
+  --accent:#6cc5a0; --accent-fg:#0f1412; --warn:#f0925c; --slate-edge:#3e3026; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:14px;line-height:1.5}
+button,input,textarea{font:inherit;color:inherit}
+.app{height:100%;display:flex;flex-direction:column;padding-inline:16px;padding-block:10px 12px;gap:10px}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px}
+.brand{font-family:var(--hand);font-weight:700;font-size:20px;margin-right:4px;white-space:nowrap}
+.grp{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.btn{min-height:38px;padding:0 12px;border:1px solid var(--line);background:var(--panel);border-radius:8px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.danger{color:var(--warn);border-color:var(--warn)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sw{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0}
+.sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--accent);border-color:transparent}
+.size{width:38px;min-height:38px;border:1px solid var(--line);background:var(--panel);border-radius:8px;cursor:pointer;display:grid;place-items:center;padding:0}
+.size i{display:block;border-radius:50%;background:var(--fg)}
+.size[aria-pressed="true"]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--panel))}
+.pg{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--muted);min-width:44px;text-align:center}
+.stage{flex:1;min-height:0;position:relative;display:grid;place-items:center}
+.board{position:relative;background:var(--slate);border:10px solid var(--slate-edge);border-radius:6px;box-shadow:inset 0 0 40px rgba(0,0,0,.35);overflow:hidden;touch-action:none}
+.board.grid{background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:calc(100% / 32) calc(100% / 20)}
+.board canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+.board.erasing canvas{cursor:cell}
+.board.texting canvas{cursor:text}
+.timer-pill{position:absolute;top:10px;right:12px;font-family:var(--mono);font-weight:600;font-size:clamp(22px,4.2vw,52px);color:var(--chalk-yellow);background:rgba(0,0,0,.28);padding:2px 14px;border-radius:10px;font-variant-numeric:tabular-nums;pointer-events:none}
+.timer-pill.done{color:var(--chalk-pink)}
+@media (prefers-reduced-motion:no-preference){.timer-pill.done{animation:blink 1s steps(2) infinite}@keyframes blink{50%{opacity:.25}}}
+.pick-show{position:absolute;inset:0;display:grid;place-items:center;background:rgba(10,20,15,.55);cursor:pointer}
+.pick-show b{font-family:var(--hand);font-size:clamp(48px,14vw,180px);color:var(--chalk-yellow);line-height:1;text-align:center;padding:0 16px;overflow-wrap:anywhere}
+.pick-show small{display:block;font-family:var(--body);font-size:14px;color:var(--chalk-white);opacity:.8;margin-top:12px;text-align:center}
+.text-in{position:absolute;min-width:120px;background:rgba(0,0,0,.35);border:1px dashed var(--chalk-white);color:var(--chalk-white);font-family:var(--hand);padding:2px 6px;outline:none;border-radius:4px}
+.drawer{position:absolute;top:0;right:0;bottom:0;width:min(330px,100%);background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:flex;flex-direction:column;z-index:5}
+.drawer header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line)}
+.drawer h2{margin:0;font-family:var(--hand);font-size:20px}
+.drawer .body{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.big{font-family:var(--mono);font-size:44px;font-weight:600;font-variant-numeric:tabular-nums;text-align:center}
+.row{display:flex;flex-wrap:wrap;gap:6px}
+.row .btn{flex:1 1 auto}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+input[type="number"],textarea{border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:8px 10px;width:100%}
+textarea{min-height:110px;resize:vertical}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.notes img{width:100%;border-radius:6px;border:1px solid var(--line);display:block}
+.notes figure{margin:0;display:flex;flex-direction:column;gap:4px}
+.notes figcaption{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.used{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+@media (max-width:640px){.brand{width:100%}.stage{align-items:start}}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="bar" role="toolbar" aria-label="黑板工具">
+    <span class="brand">課堂小黑板</span>
+    <div class="grp" id="chalks" aria-label="粉筆顏色"></div>
+    <div class="grp" id="sizes" aria-label="粗細"></div>
+    <div class="grp">
+      <button class="btn" id="t-erase" aria-pressed="false">板擦</button>
+      <button class="btn" id="t-text" aria-pressed="false">打字</button>
+      <button class="btn" id="undo" title="Ctrl+Z">復原</button>
+      <button class="btn" id="clear">清除此頁</button>
+    </div>
+    <div class="grp">
+      <button class="btn" id="prev" aria-label="上一頁">‹</button>
+      <span class="pg" id="pg">1/1</span>
+      <button class="btn" id="next" aria-label="下一頁">›</button>
+      <button class="btn" id="add">＋新頁</button>
+    </div>
+    <div class="grp">
+      <button class="btn" data-open="timer">計時</button>
+      <button class="btn" data-open="pick">抽籤</button>
+      <button class="btn" data-open="notes">下課筆記</button>
+      <button class="btn" id="gridbtn" aria-pressed="false">方格</button>
+      <button class="btn" id="fs">全螢幕</button>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="board" id="board">
+      <canvas id="ink" aria-label="黑板，可用手指或觸控筆書寫"></canvas>
+      <div class="timer-pill" id="pill" hidden></div>
+      <div class="pick-show" id="show" hidden><div><b id="show-name"></b><small>點一下關閉</small></div></div>
+    </div>
+
+    <aside class="drawer" id="d-timer" hidden aria-labelledby="h-timer">
+      <header><h2 id="h-timer">計時</h2><button class="btn" data-close>收起</button></header>
+      <div class="body">
+        <div class="big" id="t-big">03:00</div>
+        <div class="row" id="presets"></div>
+        <label class="f">自訂分鐘<input id="t-min" type="number" min="1" max="180" value="3"></label>
+        <div class="row">
+          <button class="btn" id="t-start" style="background:var(--accent);color:var(--accent-fg);border-color:var(--accent)">開始</button>
+          <button class="btn" id="t-reset">重設</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="t-beep" checked>時間到響鈴</label>
+        <p class="hint">計時會同時顯示在黑板右上角，收起這個面板也照常倒數。</p>
+      </div>
+    </aside>
+
+    <aside class="drawer" id="d-pick" hidden aria-labelledby="h-pick">
+      <header><h2 id="h-pick">抽籤</h2><button class="btn" data-close>收起</button></header>
+      <div class="body">
+        <label class="f">名單：一行一個名字，或用逗號分隔；「1-30」代表座號 1 到 30
+          <textarea id="p-list">1-30</textarea></label>
+        <label class="chk"><input type="checkbox" id="p-norep" checked>抽過的不再抽</label>
+        <div class="row">
+          <button class="btn" id="p-go" style="background:var(--accent);color:var(--accent-fg);border-color:var(--accent)">抽一位</button>
+          <button class="btn" id="p-reset">重新開始</button>
+        </div>
+        <p class="hint" id="p-left"></p>
+        <p class="used" id="p-used"></p>
+      </div>
+    </aside>
+
+    <aside class="drawer" id="d-notes" hidden aria-labelledby="h-notes">
+      <header><h2 id="h-notes">下課筆記</h2><button class="btn" data-close>收起</button></header>
+      <div class="body">
+        <p class="hint">每一頁黑板都轉成一張圖。電腦按右鍵「另存圖片」，手機長按圖片儲存，再分享給學生。</p>
+        <div class="notes" id="notes"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const W = 1600, H = 1000;                      /* 黑板的邏輯尺寸，所有座標都存在這個空間 */
+const CHALKS = [["白", "--chalk-white"], ["黃", "--chalk-yellow"], ["粉紅", "--chalk-pink"], ["藍", "--chalk-blue"]];
+const SIZES = [[4, 36], [8, 52], [16, 80]];      /* [線寬, 字級] */
+const KEY = "classroom-board-v1";
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+const S = {pages: [], cur: 0, chalk: "--chalk-white", size: 1, tool: "pen", grid: false};
+
+function sample() {
+  const w = "--chalk-white", y = "--chalk-yellow", p = "--chalk-pink";
+  return [
+    {t: "text", c: y, s: 2, x: 110, y: 170, v: "畢氏定理"},
+    {t: "text", c: w, s: 1, x: 110, y: 290, v: "直角三角形：a² + b² = c²"},
+    {t: "text", c: w, s: 1, x: 110, y: 380, v: "例：3² + 4² = 9 + 16 = 25 = 5²"},
+    {t: "line", c: w, s: 1, p: [[900, 820], [1420, 820], [900, 360], [900, 820]]},
+    {t: "line", c: w, s: 0, p: [[900, 780], [940, 780], [940, 820]]},
+    {t: "text", c: p, s: 1, x: 850, y: 610, v: "a"},
+    {t: "text", c: p, s: 1, x: 1140, y: 885, v: "b"},
+    {t: "text", c: p, s: 1, x: 1180, y: 570, v: "c"},
+    {t: "text", c: "--chalk-dim", s: 0, x: 110, y: 930, v: "範例內容。按「清除此頁」就能開始上課。"}
+  ];
+}
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem(KEY) || "null");
+    if (d && Array.isArray(d.pages) && d.pages.length) { S.pages = d.pages; S.cur = Math.min(d.cur || 0, d.pages.length - 1); S.grid = !!d.grid; return; }
+  } catch {}
+  S.pages = [{items: sample()}];
+}
+let saveT;
+function save() {
+  clearTimeout(saveT);
+  saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify({pages: S.pages, cur: S.cur, grid: S.grid})); } catch {} }, 300);
+}
+
+/* ---------- 畫面尺寸 ---------- */
+const board = $("#board"), cv = $("#ink"), ctx = cv.getContext("2d");
+let scale = 1;
+function fit() {
+  const st = $("#stage").getBoundingClientRect();
+  const frame = 20;
+  let w = st.width - frame, h = w * H / W;
+  if (h > st.height - frame) { h = st.height - frame; w = h * W / H; }
+  w = Math.max(200, w); h = w * H / W;
+  board.style.width = (w + frame) + "px"; board.style.height = (h + frame) + "px";
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  scale = w / W;
+  ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  redraw();
+}
+
+/* ---------- 繪製 ---------- */
+function drawItem(c, it) {
+  if (it.t === "line") {
+    c.globalCompositeOperation = it.erase ? "destination-out" : "source-over";
+    c.strokeStyle = it.erase ? "#000" : css(it.c);
+    c.lineWidth = it.erase ? 46 : SIZES[it.s][0];
+    c.lineCap = "round"; c.lineJoin = "round";
+    c.beginPath();
+    it.p.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y));
+    if (it.p.length === 1) c.lineTo(it.p[0][0] + .1, it.p[0][1]);
+    c.stroke();
+  } else if (it.t === "text") {
+    c.globalCompositeOperation = "source-over";
+    c.fillStyle = css(it.c);
+    c.font = `${SIZES[it.s][1]}px ${css("--hand")}`;
+    c.textBaseline = "alphabetic";
+    c.fillText(it.v, it.x, it.y);
+  }
+  c.globalCompositeOperation = "source-over";
+}
+function redraw() {
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.restore();
+  page().items.forEach(it => drawItem(ctx, it));
+}
+const page = () => S.pages[S.cur];
+
+/* ---------- 筆與板擦（每根手指各自一筆） ---------- */
+const live = new Map();
+function toBoard(e) { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale]; }
+cv.addEventListener("pointerdown", e => {
+  if (S.tool === "text") { e.preventDefault(); openText(e); return; }
+  cv.setPointerCapture(e.pointerId);
+  const it = {t: "line", c: S.chalk, s: S.size, p: [toBoard(e)], erase: S.tool === "erase" || undefined};
+  live.set(e.pointerId, it); page().items.push(it); drawItem(ctx, it);
+});
+cv.addEventListener("pointermove", e => {
+  const it = live.get(e.pointerId); if (!it) return;
+  const pts = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+  for (const ev of pts) {
+    const prev = it.p[it.p.length - 1], q = toBoard(ev);
+    if (Math.hypot(q[0] - prev[0], q[1] - prev[1]) < 1.5) continue;
+    it.p.push(q);
+    drawItem(ctx, {...it, p: [prev, q]});
+  }
+});
+function endStroke(e) { if (live.delete(e.pointerId)) save(); }
+cv.addEventListener("pointerup", endStroke);
+cv.addEventListener("pointercancel", endStroke);
+
+/* ---------- 打字 ---------- */
+let textBox = null;
+function openText(e) {
+  commitText();
+  const [x, y] = toBoard(e);
+  const inp = document.createElement("input");
+  inp.className = "text-in"; inp.id = "text-entry"; inp.setAttribute("aria-label", "在黑板上打字，按 Enter 完成");
+  const fs = SIZES[S.size][1] * scale;
+  inp.style.left = (x * scale) + "px"; inp.style.top = (y * scale - fs) + "px"; inp.style.fontSize = fs + "px";
+  inp.style.color = css(S.chalk);
+  board.append(inp); inp.focus();
+  textBox = {inp, x, y, c: S.chalk, s: S.size};
+  inp.addEventListener("keydown", ev => { if (ev.key === "Enter") commitText(); if (ev.key === "Escape") { inp.remove(); textBox = null; } });
+  inp.addEventListener("blur", () => setTimeout(commitText, 0));
+}
+function commitText() {
+  if (!textBox) return;
+  const {inp, x, y, c, s} = textBox; textBox = null;
+  const v = inp.value.trim(); inp.remove();
+  if (!v) return;
+  const it = {t: "text", c, s, x, y, v};
+  page().items.push(it); drawItem(ctx, it); save();
+}
+
+/* ---------- 工具列 ---------- */
+CHALKS.forEach(([name, tok]) => {
+  const b = document.createElement("button");
+  b.className = "sw"; b.style.background = `var(${tok})`; b.setAttribute("aria-label", name + "色粉筆"); b.dataset.c = tok;
+  b.onclick = () => { S.chalk = tok; if (S.tool === "erase") S.tool = "pen"; sync(); };
+  $("#chalks").append(b);
+});
+SIZES.forEach(([w], i) => {
+  const b = document.createElement("button");
+  b.className = "size"; b.setAttribute("aria-label", ["細", "中", "粗"][i]); b.dataset.s = i;
+  const dot = document.createElement("i"); dot.style.width = dot.style.height = (4 + w * .9) + "px"; b.append(dot);
+  b.onclick = () => { S.size = i; sync(); };
+  $("#sizes").append(b);
+});
+function sync() {
+  document.querySelectorAll(".sw").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.c === S.chalk && S.tool !== "erase")));
+  document.querySelectorAll(".size").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.s === S.size)));
+  $("#t-erase").setAttribute("aria-pressed", String(S.tool === "erase"));
+  $("#t-text").setAttribute("aria-pressed", String(S.tool === "text"));
+  $("#gridbtn").setAttribute("aria-pressed", String(S.grid));
+  board.classList.toggle("erasing", S.tool === "erase");
+  board.classList.toggle("texting", S.tool === "text");
+  board.classList.toggle("grid", S.grid);
+  $("#pg").textContent = `${S.cur + 1}/${S.pages.length}`;
+  $("#prev").disabled = S.cur === 0; $("#next").disabled = S.cur === S.pages.length - 1;
+}
+$("#t-erase").onclick = () => { S.tool = S.tool === "erase" ? "pen" : "erase"; sync(); };
+$("#t-text").onclick = () => { S.tool = S.tool === "text" ? "pen" : "text"; sync(); };
+$("#gridbtn").onclick = () => { S.grid = !S.grid; sync(); save(); };
+function undo() { commitText(); page().items.pop(); redraw(); save(); }
+$("#undo").onclick = undo;
+document.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !textBox) { e.preventDefault(); undo(); } });
+
+let clearArm = null;
+$("#clear").onclick = () => {
+  const b = $("#clear");
+  if (!clearArm) {
+    b.textContent = "再按一次確定"; b.classList.add("danger");
+    clearArm = setTimeout(() => { clearArm = null; b.textContent = "清除此頁"; b.classList.remove("danger"); }, 3000);
+    return;
+  }
+  clearTimeout(clearArm); clearArm = null; b.textContent = "清除此頁"; b.classList.remove("danger");
+  page().items = []; redraw(); save();
+};
+function go(i) { commitText(); S.cur = i; redraw(); sync(); save(); }
+$("#prev").onclick = () => go(Math.max(0, S.cur - 1));
+$("#next").onclick = () => go(Math.min(S.pages.length - 1, S.cur + 1));
+$("#add").onclick = () => { S.pages.splice(S.cur + 1, 0, {items: []}); go(S.cur + 1); };
+$("#fs").onclick = () => {
+  const el = document.documentElement;
+  const p = document.fullscreenElement ? document.exitFullscreen() : (el.requestFullscreen && el.requestFullscreen());
+  if (p && p.catch) p.catch(() => {});
+};
+
+/* ---------- 抽屜 ---------- */
+let openD = null;
+function openDrawer(name) {
+  document.querySelectorAll(".drawer").forEach(d => d.hidden = true);
+  if (openD === name) { openD = null; return; }
+  openD = name; $("#d-" + name).hidden = false;
+  if (name === "notes") buildNotes();
+  if (name === "pick") pickStatus();
+}
+document.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openDrawer(b.dataset.open));
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => { document.querySelectorAll(".drawer").forEach(d => d.hidden = true); openD = null; });
+
+/* ---------- 計時 ---------- */
+const T = {total: 180, left: 180, end: 0, run: false, iv: null};
+const mmss = s => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+[1, 3, 5, 10].forEach(m => {
+  const b = document.createElement("button"); b.className = "btn"; b.textContent = m + " 分";
+  b.onclick = () => { $("#t-min").value = m; setTimer(m * 60); };
+  $("#presets").append(b);
+});
+function setTimer(sec) { clearInterval(T.iv); T.run = false; T.total = T.left = sec; paintTimer(); $("#t-start").textContent = "開始"; $("#pill").hidden = true; $("#pill").classList.remove("done"); }
+function paintTimer() { $("#t-big").textContent = mmss(T.left); $("#pill").textContent = mmss(T.left); }
+$("#t-min").onchange = e => { const m = Math.min(180, Math.max(1, Math.round(+e.target.value || 1))); e.target.value = m; setTimer(m * 60); };
+let audio;
+function beep() {
+  if (!$("#t-beep").checked) return;
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    [0, .35, .7].forEach(t => {
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(audio.destination);
+      g.gain.setValueAtTime(.0001, audio.currentTime + t);
+      g.gain.exponentialRampToValueAtTime(.3, audio.currentTime + t + .02);
+      g.gain.exponentialRampToValueAtTime(.0001, audio.currentTime + t + .28);
+      o.start(audio.currentTime + t); o.stop(audio.currentTime + t + .3);
+    });
+  } catch {}
+}
+$("#t-start").onclick = () => {
+  try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch {}
+  if (T.run) { clearInterval(T.iv); T.run = false; $("#t-start").textContent = "繼續"; return; }
+  if (T.left <= 0) T.left = T.total;
+  $("#pill").classList.remove("done"); $("#pill").hidden = false;
+  T.run = true; T.end = Date.now() + T.left * 1000; $("#t-start").textContent = "暫停";
+  T.iv = setInterval(() => {
+    T.left = Math.max(0, Math.ceil((T.end - Date.now()) / 1000)); paintTimer();
+    if (T.left === 0) { clearInterval(T.iv); T.run = false; $("#t-start").textContent = "開始"; $("#pill").textContent = "時間到"; $("#pill").classList.add("done"); beep(); }
+  }, 250);
+};
+$("#t-reset").onclick = () => setTimer(T.total);
+
+/* ---------- 抽籤 ---------- */
+const used = [];
+function roster() {
+  const out = [];
+  $("#p-list").value.split(/[\n,，、]+/).map(s => s.trim()).filter(Boolean).forEach(tok => {
+    const m = tok.match(/^(\d+)\s*[-–~到]\s*(\d+)$/);
+    if (m) { const a = +m[1], b = +m[2]; for (let i = Math.min(a, b); i <= Math.min(Math.max(a, b), Math.min(a, b) + 500); i++) out.push(i + " 號"); }
+    else out.push(tok);
+  });
+  return [...new Set(out)];
+}
+function pickStatus() {
+  const all = roster(), left = $("#p-norep").checked ? all.filter(n => !used.includes(n)) : all;
+  $("#p-left").textContent = `名單 ${all.length} 人，還能抽 ${left.length} 人`;
+  $("#p-used").textContent = used.length ? "已抽：" + used.join("、") : "";
+  return left;
+}
+$("#p-list").oninput = pickStatus; $("#p-norep").onchange = pickStatus;
+$("#p-reset").onclick = () => { used.length = 0; pickStatus(); };
+$("#p-go").onclick = () => {
+  const left = pickStatus();
+  if (!left.length) { $("#p-left").textContent = "名單都抽過了，按「重新開始」再抽一輪。"; return; }
+  const final = left[Math.floor(Math.random() * left.length)];
+  if (matchMedia("(max-width: 700px)").matches) { document.querySelectorAll(".drawer").forEach(d => d.hidden = true); openD = null; }  /* 手機上抽屜蓋住整塊黑板，先收起 */
+  const show = $("#show"), nm = $("#show-name");
+  show.hidden = false;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let n = reduce ? 0 : 14;
+  (function spin() {
+    if (n-- > 0) { nm.textContent = left[Math.floor(Math.random() * left.length)]; setTimeout(spin, 60 + (14 - n) * 12); return; }
+    nm.textContent = final;
+    if ($("#p-norep").checked) used.push(final);
+    pickStatus();
+  })();
+};
+$("#show").onclick = () => { $("#show").hidden = true; };
+
+/* ---------- 下課筆記：每頁轉成圖片 ---------- */
+function pageImage(p) {
+  const off = document.createElement("canvas"); off.width = W; off.height = H;
+  const c = off.getContext("2d");
+  const ink = document.createElement("canvas"); ink.width = W; ink.height = H;
+  const ic = ink.getContext("2d"); p.items.forEach(it => drawItem(ic, it));
+  c.fillStyle = css("--slate"); c.fillRect(0, 0, W, H);
+  if (S.grid) {
+    c.strokeStyle = "rgba(232,240,235,.09)"; c.lineWidth = 2;
+    for (let x = 0; x <= W; x += W / 32) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); }
+    for (let y = 0; y <= H; y += H / 20) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+  }
+  c.drawImage(ink, 0, 0);
+  return off.toDataURL("image/png");
+}
+function buildNotes() {
+  commitText();
+  const box = $("#notes"); box.replaceChildren();
+  const d = new Date(), stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  S.pages.forEach((p, i) => {
+    const f = document.createElement("figure");
+    const img = new Image(); img.src = pageImage(p); img.alt = `黑板第 ${i + 1} 頁`;
+    const cap = document.createElement("figcaption"); cap.textContent = `${stamp} · 第 ${i + 1}/${S.pages.length} 頁`;
+    f.append(img, cap); box.append(f);
+  });
+}
+
+/* ---------- 啟動 ---------- */
+load(); sync();
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(fit, 120); });
+fit();
+if (document.fonts && document.fonts.load) document.fonts.load(`40px "LXGW WenKai TC"`).then(redraw).catch(() => {});
+try { navigator.wakeLock && navigator.wakeLock.request("screen").catch(() => {}); } catch {}
+</script>
+</body>
+</html>
