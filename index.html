@@ -501,12 +501,24 @@ $("#dl-pdf").onclick = () => {
   commitText();
   const btn = $("#dl-pdf"), msg = $("#dl-msg");
   btn.disabled = true; btn.textContent = "產生中…";
-  setTimeout(() => {
+  setTimeout(async () => {
     try {
       /* A4 橫向寬度 842pt，高度依黑板比例 16:10 */
       const pdf = buildPdf(S.pages.map(p => jpegBytes(pageImage(p, true))), 842, Math.round(842 * H / W));
-      saveBlob(pdf, `黑板筆記-${today()}.pdf`);
-      msg.textContent = `已下載 ${S.pages.length} 頁。手機上可在「檔案」或「下載」裡找到。`;
+      const name = `黑板筆記-${today()}.pdf`;
+      /* 手機與平板：用系統分享選單（可直接存檔或傳 LINE）。App 內建瀏覽器常把 blob 下載誤當成「下載網頁」 */
+      const file = new File([pdf], name, {type: "application/pdf"});
+      const touch = matchMedia("(pointer: coarse)").matches;
+      let shared = false;
+      if (touch && navigator.canShare && navigator.canShare({files: [file]})) {
+        try { await navigator.share({files: [file], title: name}); shared = true; }
+        catch (e) { if (e && e.name === "AbortError") shared = true; }
+      }
+      if (shared) msg.textContent = `已產生 ${S.pages.length} 頁的 PDF。在分享選單裡可選「儲存」或直接傳給學生。`;
+      else {
+        saveBlob(pdf, name);
+        msg.textContent = `已下載 ${S.pages.length} 頁。手機上可在「檔案」或「下載」裡找到。`;
+      }
     } catch {
       msg.textContent = "PDF 產生失敗。請改用下面單張圖片的「下載」。";
     }
