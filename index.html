@@ -74,6 +74,8 @@ textarea{min-height:110px;resize:vertical}
 .notes img{width:100%;border-radius:6px;border:1px solid var(--line);display:block}
 .notes figure{margin:0;display:flex;flex-direction:column;gap:4px}
 .notes figcaption{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.notes figcaption a{color:var(--accent)}
+.btn:disabled{opacity:.6;cursor:progress}
 .used{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 @media (max-width:640px){.brand{width:100%}.stage{align-items:start}}
 </style>
@@ -146,7 +148,8 @@ textarea{min-height:110px;resize:vertical}
     <aside class="drawer" id="d-notes" hidden aria-labelledby="h-notes">
       <header><h2 id="h-notes">下課筆記</h2><button class="btn" data-close>收起</button></header>
       <div class="body">
-        <p class="hint">每一頁黑板都轉成一張圖。電腦按右鍵「另存圖片」，手機長按圖片儲存，再分享給學生。</p>
+        <button class="btn" id="dl-pdf" style="background:var(--accent);color:var(--accent-fg);border-color:var(--accent)">下載全部（PDF）</button>
+        <p class="hint" id="dl-msg">所有頁面合成一個 PDF，一頁黑板一頁，直接傳給學生。也可以點單張圖片下面的「下載」。</p>
         <div class="notes" id="notes"></div>
       </div>
     </aside>
@@ -423,7 +426,7 @@ $("#p-go").onclick = () => {
 $("#show").onclick = () => { $("#show").hidden = true; };
 
 /* ---------- 下課筆記：每頁轉成圖片 ---------- */
-function pageImage(p) {
+function pageImage(p, jpeg) {
   const off = document.createElement("canvas"); off.width = W; off.height = H;
   const c = off.getContext("2d");
   const ink = document.createElement("canvas"); ink.width = W; ink.height = H;
@@ -435,19 +438,81 @@ function pageImage(p) {
     for (let y = 0; y <= H; y += H / 20) { c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
   }
   c.drawImage(ink, 0, 0);
-  return off.toDataURL("image/png");
+  return jpeg ? off.toDataURL("image/jpeg", 0.85) : off.toDataURL("image/png");
+}
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 function buildNotes() {
   commitText();
   const box = $("#notes"); box.replaceChildren();
-  const d = new Date(), stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const stamp = today();
   S.pages.forEach((p, i) => {
     const f = document.createElement("figure");
-    const img = new Image(); img.src = pageImage(p); img.alt = `黑板第 ${i + 1} 頁`;
-    const cap = document.createElement("figcaption"); cap.textContent = `${stamp} · 第 ${i + 1}/${S.pages.length} 頁`;
+    const src = pageImage(p);
+    const img = new Image(); img.src = src; img.alt = `黑板第 ${i + 1} 頁`;
+    const cap = document.createElement("figcaption");
+    const a = document.createElement("a");
+    a.href = src; a.download = `黑板筆記-${stamp}-第${i + 1}頁.png`; a.textContent = "下載";
+    cap.append(`${stamp} · 第 ${i + 1}/${S.pages.length} 頁 · `, a);
     f.append(img, cap); box.append(f);
   });
 }
+
+/* 一鍵下載：自己組一個最小的 PDF，每頁一張 JPEG，不需要外部程式庫，離線也能用 */
+function jpegBytes(dataUrl) {
+  const bin = atob(dataUrl.slice(dataUrl.indexOf(",") + 1));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function buildPdf(jpegs, w, h) {
+  const enc = new TextEncoder(), parts = [], offsets = [];
+  let len = 0;
+  const put = x => { const b = typeof x === "string" ? enc.encode(x) : x; parts.push(b); len += b.length; };
+  const n = jpegs.length;
+  /* 物件編號：1 目錄、2 頁面樹，之後每頁 3 個物件（頁面、圖片、內容） */
+  const pageId = i => 3 + i * 3;
+  put("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
+  const obj = (id, body) => { offsets[id] = len; put(`${id} 0 obj\n`); body(); put("\nendobj\n"); };
+  obj(1, () => put("<< /Type /Catalog /Pages 2 0 R >>"));
+  obj(2, () => put(`<< /Type /Pages /Count ${n} /Kids [${jpegs.map((_, i) => pageId(i) + " 0 R").join(" ")}] >>`));
+  jpegs.forEach((jpg, i) => {
+    const pid = pageId(i), iid = pid + 1, cid = pid + 2;
+    obj(pid, () => put(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources << /XObject << /Im${i} ${iid} 0 R >> >> /Contents ${cid} 0 R >>`));
+    obj(iid, () => { put(`<< /Type /XObject /Subtype /Image /Width ${W} /Height ${H} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`); put(jpg); put("\nendstream"); });
+    const draw = `q ${w} 0 0 ${h} 0 0 cm /Im${i} Do Q`;
+    obj(cid, () => put(`<< /Length ${draw.length} >>\nstream\n${draw}\nendstream`));
+  });
+  const total = 3 + n * 3, xref = len;
+  let x = `xref\n0 ${total}\n0000000000 65535 f \n`;
+  for (let id = 1; id < total; id++) x += String(offsets[id]).padStart(10, "0") + " 00000 n \n";
+  put(x + `trailer\n<< /Size ${total} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  return new Blob(parts, {type: "application/pdf"});
+}
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+$("#dl-pdf").onclick = () => {
+  commitText();
+  const btn = $("#dl-pdf"), msg = $("#dl-msg");
+  btn.disabled = true; btn.textContent = "產生中…";
+  setTimeout(() => {
+    try {
+      /* A4 橫向寬度 842pt，高度依黑板比例 16:10 */
+      const pdf = buildPdf(S.pages.map(p => jpegBytes(pageImage(p, true))), 842, Math.round(842 * H / W));
+      saveBlob(pdf, `黑板筆記-${today()}.pdf`);
+      msg.textContent = `已下載 ${S.pages.length} 頁。手機上可在「檔案」或「下載」裡找到。`;
+    } catch {
+      msg.textContent = "PDF 產生失敗。請改用下面單張圖片的「下載」。";
+    }
+    btn.disabled = false; btn.textContent = "下載全部（PDF）";
+  }, 30);
+};
 
 /* ---------- 啟動 ---------- */
 load(); sync();
