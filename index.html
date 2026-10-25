@@ -77,6 +77,15 @@ textarea{min-height:110px;resize:vertical}
 .notes figcaption a{color:var(--accent)}
 .btn:disabled{opacity:.6;cursor:progress}
 .used{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.sh-list{display:flex;flex-direction:column;gap:4px}
+.sh-list button{text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+.sh-list button[aria-pressed="true"]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--bg))}
+.sh-list b{font-family:var(--hand);font-size:17px}
+.sh-list span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+input[type="search"]{border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:8px 10px;width:100%}
+.sh-play{position:absolute;inset:0;background:#000;z-index:4}
+.sh-play iframe{width:100%;height:100%;border:0;display:block}
+.sh-play .btn{position:absolute;top:8px;right:8px}
 @media (max-width:640px){.brand{width:100%}.stage{align-items:start}}
 </style>
 </head>
@@ -102,6 +111,7 @@ textarea{min-height:110px;resize:vertical}
     <div class="grp">
       <button class="btn" data-open="timer">計時</button>
       <button class="btn" data-open="pick">抽籤</button>
+      <button class="btn" data-open="shuihen">水痕故事</button>
       <button class="btn" data-open="notes">下課筆記</button>
       <button class="btn" id="gridbtn" aria-pressed="false">方格</button>
       <button class="btn" id="fs">全螢幕</button>
@@ -112,6 +122,7 @@ textarea{min-height:110px;resize:vertical}
     <div class="board" id="board">
       <canvas id="ink" aria-label="黑板，可用手指或觸控筆書寫"></canvas>
       <div class="timer-pill" id="pill" hidden></div>
+      <div class="sh-play" id="sh-play" hidden><iframe id="sh-frame" title="水泥地水痕四格故事" allow="autoplay"></iframe><button class="btn" id="sh-close">回到黑板</button></div>
       <div class="pick-show" id="show" hidden><div><b id="show-name"></b><small>點一下關閉</small></div></div>
     </div>
 
@@ -142,6 +153,20 @@ textarea{min-height:110px;resize:vertical}
         </div>
         <p class="hint" id="p-left"></p>
         <p class="used" id="p-used"></p>
+      </div>
+    </aside>
+
+    <aside class="drawer" id="d-shuihen" hidden aria-labelledby="h-shuihen">
+      <header><h2 id="h-shuihen">水痕故事</h2><button class="btn" data-close>收起</button></header>
+      <div class="body">
+        <p class="hint">「水泥地水痕」的四格故事：水管在水泥地上一格一格畫出來。可以在黑板上播放，或把四格文字抄到新的一頁，留空間給學生討論。</p>
+        <input type="search" id="sh-q" placeholder="搜尋故事名稱或內容" aria-label="搜尋水痕故事">
+        <div class="row">
+          <button class="btn" id="sh-play-btn" style="background:var(--accent);color:var(--accent-fg);border-color:var(--accent)" disabled>在黑板上播放</button>
+          <button class="btn" id="sh-copy" disabled>抄到新的一頁</button>
+        </div>
+        <p class="hint" id="sh-msg">載入中…</p>
+        <div class="sh-list" id="sh-list"></div>
       </div>
     </aside>
 
@@ -345,6 +370,7 @@ function openDrawer(name) {
   openD = name; $("#d-" + name).hidden = false;
   if (name === "notes") buildNotes();
   if (name === "pick") pickStatus();
+  if (name === "shuihen") loadShuihen();
 }
 document.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openDrawer(b.dataset.open));
 document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => { document.querySelectorAll(".drawer").forEach(d => d.hidden = true); openD = null; });
@@ -424,6 +450,62 @@ $("#p-go").onclick = () => {
   })();
 };
 $("#show").onclick = () => { $("#show").hidden = true; };
+
+/* ---------- 水痕故事：讀「水泥地水痕」的故事清單 ---------- */
+const SH_URL = "https://p19691221-web.github.io/soft-shelf/works/shuihen/";
+let SH = null, shSel = -1;
+async function loadShuihen() {
+  if (SH) return;
+  try {
+    const html = await (await fetch(SH_URL, {cache: "no-cache"})).text();
+    const m = html.match(/const STORIES=\[([\s\S]*?)\n\];/);
+    const src = m ? m[1] : html;
+    SH = [];
+    for (const sm of src.matchAll(/\{title:'([^']+)',panels:\[([\s\S]*?)\]\](?:,by:'[^']*')?\}/g)) {
+      const caps = [...sm[2].matchAll(/\['[^']*','([^']*)'/g)].map(x => x[1]);
+      if (caps.length) SH.push({title: sm[1], caps});
+    }
+    if (!SH.length) throw 0;
+    $("#sh-msg").textContent = `共 ${SH.length} 則。點一則選取。`;
+    shList();
+  } catch {
+    SH = null;
+    $("#sh-msg").textContent = "讀不到故事清單，請確認有網路。";
+  }
+}
+function shList() {
+  const q = $("#sh-q").value.trim(), box = $("#sh-list"); box.replaceChildren();
+  SH.forEach((st, i) => {
+    if (q && !(st.title + st.caps.join("")).includes(q)) return;
+    const b = document.createElement("button");
+    b.setAttribute("aria-pressed", String(i === shSel));
+    const t = document.createElement("b"); t.textContent = `〈${st.title}〉`;
+    const c = document.createElement("span"); c.textContent = st.caps.join(" ／ ");
+    b.append(t, c);
+    b.onclick = () => { shSel = i; $("#sh-play-btn").disabled = $("#sh-copy").disabled = false; shList(); };
+    box.append(b);
+  });
+}
+$("#sh-q").oninput = () => SH && shList();
+$("#sh-play-btn").onclick = () => {
+  if (shSel < 0) return;
+  const url = SH_URL + "#s=" + encodeURIComponent(SH[shSel].title);
+  if (board.getBoundingClientRect().width < 640) { window.open(url, "_blank"); return; }  /* 黑板太小時播放畫面擠不下，改開新分頁 */
+  $("#sh-frame").src = url;
+  $("#sh-play").hidden = false;
+  document.querySelectorAll(".drawer").forEach(d => d.hidden = true); openD = null;
+};
+$("#sh-close").onclick = () => { $("#sh-play").hidden = true; $("#sh-frame").src = "about:blank"; };
+$("#sh-copy").onclick = () => {
+  if (shSel < 0) return;
+  const st = SH[shSel], w = "--chalk-white", y = "--chalk-yellow", d = "--chalk-dim";
+  const items = [{t: "text", c: y, s: 2, x: 100, y: 150, v: `〈${st.title}〉`}];
+  st.caps.forEach((v, i) => items.push({t: "text", c: w, s: 1, x: 100, y: 270 + i * 110, v: `${i + 1}. ${v}`}));
+  items.push({t: "text", c: d, s: 0, x: 100, y: 940, v: "出自「水泥地水痕」"});
+  S.pages.splice(S.cur + 1, 0, {items});
+  go(S.cur + 1);
+  $("#sh-msg").textContent = `已把〈${st.title}〉抄到第 ${S.cur + 1} 頁。`;
+};
 
 /* ---------- 下課筆記：每頁轉成圖片 ---------- */
 function pageImage(p, jpeg) {
