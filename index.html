@@ -114,6 +114,7 @@ input[type="search"]{border:1px solid var(--line);border-radius:8px;background:v
       <button class="btn" data-open="pick">抽籤</button>
       <button class="btn" data-open="shuihen">水痕故事</button>
       <button class="btn" data-open="group">班級群組</button>
+      <button class="btn" data-open="bento">訂便當</button>
       <button class="btn" data-open="notes">下課筆記</button>
       <button class="btn" id="gridbtn" aria-pressed="false">方格</button>
       <button class="btn" id="fs">全螢幕</button>
@@ -184,6 +185,23 @@ input[type="search"]{border:1px solid var(--line);border-radius:8px;background:v
         </div>
         <p class="hint" id="g-msg">網址只存在這台裝置的瀏覽器裡。</p>
         <p class="hint">還沒有群組？到 <a href="https://github.com/p19691221-web/our-space-template" target="_blank" rel="noopener" style="color:var(--accent)">our-space-template</a> 按「Use this template」建一份班上自己的，照 README 設定好再把網址貼回來。</p>
+      </div>
+    </aside>
+
+    <aside class="drawer" id="d-bento" hidden aria-labelledby="h-bento">
+      <header><h2 id="h-bento">訂便當／飲料團購</h2><button class="btn" data-close>收起</button></header>
+      <div class="body">
+        <p class="hint">用「收款結算小幫手」登記全班的便當、飲料：誰點什麼、該付多少、誰少給誰多給，一目了然。</p>
+        <div class="row">
+          <button class="btn" id="b-board" style="background:var(--accent);color:var(--accent-fg);border-color:var(--accent)">在黑板上打開</button>
+          <button class="btn" id="b-tab">在新分頁打開</button>
+        </div>
+        <p class="hint">在黑板上打開時，全班看得到同一份清單，排隊上台登記也行。訂單存在這台黑板的瀏覽器裡。</p>
+        <label class="f">收單用的表單網址（選填）：Google 表單或共用 Excel
+          <input type="url" id="b-form" placeholder="https://forms.gle/…" style="border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:8px 10px;width:100%"></label>
+        <button class="btn" id="b-qr">表單 QR code 秀在黑板上</button>
+        <p class="hint" id="b-msg">同學用手機掃碼填名字和品項，最後把表單的「姓名、部門、品項、備註」四欄複製，貼進小幫手的「批次貼上」就一次登記完。</p>
+        <p class="hint">需要空白的訂購單範本？<a href="https://p19691221-web.github.io/bento-calc/lunch-order-template.xlsx" style="color:var(--accent)">下載 Excel 範本</a></p>
       </div>
     </aside>
 
@@ -512,7 +530,7 @@ $("#sh-play-btn").onclick = () => {
   $("#sh-play").hidden = false;
   document.querySelectorAll(".drawer").forEach(d => d.hidden = true); openD = null;
 };
-$("#sh-close").onclick = () => { $("#sh-play").hidden = true; $("#sh-frame").src = "about:blank"; };
+$("#sh-close").onclick = () => { $("#sh-play").hidden = true; $("#sh-frame").src = "about:blank"; $("#sh-frame").title = "水泥地水痕四格故事"; };
 $("#sh-copy").onclick = () => {
   if (shSel < 0) return;
   const st = SH[shSel], w = "--chalk-white", y = "--chalk-yellow", d = "--chalk-dim";
@@ -597,8 +615,7 @@ function groupUrl() {
 }
 $("#g-url").onchange = () => { if ($("#g-url").value.trim()) groupUrl(); else try { localStorage.removeItem(GKEY); } catch {} };
 $("#g-open").onclick = () => { const u = groupUrl(); if (u) { window.open(u, "_blank", "noopener"); $("#g-msg").textContent = "已在新分頁打開。"; } };
-$("#g-show").onclick = () => {
-  const u = groupUrl(); if (!u) return;
+function showQR(u) {
   document.querySelectorAll(".drawer").forEach(d => d.hidden = true); openD = null;
   $("#show-name").textContent = u.replace(/^https?:\/\//, "").replace(/\/$/, "");
   $("#show-name").style.fontSize = "clamp(20px,3.4vw,48px)";
@@ -612,6 +629,26 @@ $("#g-show").onclick = () => {
     qc.hidden = false;
   } else qc.hidden = true;  /* 網址太長（超過約 200 字）就只顯示文字 */
   $("#show").hidden = false;
+}
+$("#g-show").onclick = () => { const u = groupUrl(); if (u) showQR(u); };
+
+/* ---------- 訂便當：收款結算小幫手 ---------- */
+const BENTO_URL = "https://p19691221-web.github.io/bento-calc/bento.html", BKEY = "classroom-board-bento-form";
+try { $("#b-form").value = localStorage.getItem(BKEY) || ""; } catch {}
+$("#b-board").onclick = () => {
+  if (board.getBoundingClientRect().width < 640) { window.open(BENTO_URL, "_blank"); return; }
+  $("#sh-frame").src = BENTO_URL; $("#sh-frame").title = "收款結算小幫手";
+  $("#sh-play").hidden = false;
+  document.querySelectorAll(".drawer").forEach(d => d.hidden = true); openD = null;
+};
+$("#b-tab").onclick = () => window.open(BENTO_URL, "_blank");
+$("#b-qr").onclick = () => {
+  let v = $("#b-form").value.trim();
+  if (!v) { $("#b-msg").textContent = "先貼上收單表單的網址。"; return; }
+  if (!/^https?:\/\//i.test(v)) v = "https://" + v;
+  try { new URL(v); } catch { $("#b-msg").textContent = "這不像一個網址，請再檢查一次。"; return; }
+  $("#b-form").value = v; try { localStorage.setItem(BKEY, v); } catch {}
+  showQR(v);
 };
 
 /* ---------- 下課筆記：每頁轉成圖片 ---------- */
