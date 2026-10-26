@@ -112,6 +112,7 @@ input[type="search"]{border:1px solid var(--line);border-radius:8px;background:v
       <button class="btn" data-open="timer">計時</button>
       <button class="btn" data-open="pick">抽籤</button>
       <button class="btn" data-open="shuihen">水痕故事</button>
+      <button class="btn" data-open="group">班級群組</button>
       <button class="btn" data-open="notes">下課筆記</button>
       <button class="btn" id="gridbtn" aria-pressed="false">方格</button>
       <button class="btn" id="fs">全螢幕</button>
@@ -167,6 +168,21 @@ input[type="search"]{border:1px solid var(--line);border-radius:8px;background:v
         </div>
         <p class="hint" id="sh-msg">載入中…</p>
         <div class="sh-list" id="sh-list"></div>
+      </div>
+    </aside>
+
+    <aside class="drawer" id="d-group" hidden aria-labelledby="h-group">
+      <header><h2 id="h-group">班級群組</h2><button class="btn" data-close>收起</button></header>
+      <div class="body">
+        <p class="hint">把班上自己的「我們的地方」接到黑板上：只有班上的人進得去的聊天空間，上課要分享連結、收問題都很方便。</p>
+        <label class="f">你們班「我們的地方」的網址
+          <input type="url" id="g-url" placeholder="https://你的帳號.github.io/our-space/" style="border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:8px 10px;width:100%"></label>
+        <div class="row">
+          <button class="btn" id="g-open" style="background:var(--accent);color:var(--accent-fg);border-color:var(--accent)">打開群組</button>
+          <button class="btn" id="g-show">網址秀在黑板上</button>
+        </div>
+        <p class="hint" id="g-msg">網址只存在這台裝置的瀏覽器裡。</p>
+        <p class="hint">還沒有群組？到 <a href="https://github.com/p19691221-web/our-space-template" target="_blank" rel="noopener" style="color:var(--accent)">our-space-template</a> 按「Use this template」建一份班上自己的，照 README 設定好再把網址貼回來。</p>
       </div>
     </aside>
 
@@ -449,7 +465,7 @@ $("#p-go").onclick = () => {
     pickStatus();
   })();
 };
-$("#show").onclick = () => { $("#show").hidden = true; };
+$("#show").onclick = () => { $("#show").hidden = true; $("#show-name").style.fontSize = ""; };
 
 /* ---------- 水痕故事：讀「水泥地水痕」的故事清單 ---------- */
 const SH_URL = "https://p19691221-web.github.io/soft-shelf/works/shuihen/";
@@ -505,6 +521,28 @@ $("#sh-copy").onclick = () => {
   S.pages.splice(S.cur + 1, 0, {items});
   go(S.cur + 1);
   $("#sh-msg").textContent = `已把〈${st.title}〉抄到第 ${S.cur + 1} 頁。`;
+};
+
+/* ---------- 班級群組：連到班上自己的「我們的地方」 ---------- */
+const GKEY = "classroom-board-group";
+try { $("#g-url").value = localStorage.getItem(GKEY) || ""; } catch {}
+function groupUrl() {
+  let v = $("#g-url").value.trim();
+  if (!v) { $("#g-msg").textContent = "先貼上你們班「我們的地方」的網址。"; return ""; }
+  if (!/^https?:\/\//i.test(v)) v = "https://" + v;
+  try { new URL(v); } catch { $("#g-msg").textContent = "這不像一個網址，請再檢查一次。"; return ""; }
+  $("#g-url").value = v;
+  try { localStorage.setItem(GKEY, v); } catch {}
+  return v;
+}
+$("#g-url").onchange = () => { if ($("#g-url").value.trim()) groupUrl(); else try { localStorage.removeItem(GKEY); } catch {} };
+$("#g-open").onclick = () => { const u = groupUrl(); if (u) { window.open(u, "_blank", "noopener"); $("#g-msg").textContent = "已在新分頁打開。"; } };
+$("#g-show").onclick = () => {
+  const u = groupUrl(); if (!u) return;
+  document.querySelectorAll(".drawer").forEach(d => d.hidden = true); openD = null;
+  $("#show-name").textContent = u.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  $("#show-name").style.fontSize = "clamp(28px,5vw,72px)";
+  $("#show").hidden = false;
 };
 
 /* ---------- 下課筆記：每頁轉成圖片 ---------- */
