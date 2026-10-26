@@ -58,6 +58,19 @@ button,input,textarea{font:inherit;color:inherit}
 .pick-show{position:absolute;inset:0;display:grid;place-items:center;background:rgba(10,20,15,.55);cursor:pointer}
 .pick-show b{font-family:var(--hand);font-size:clamp(48px,14vw,180px);color:var(--chalk-yellow);line-height:1;text-align:center;padding:0 16px;overflow-wrap:anywhere}
 .board .pick-show canvas{position:static;cursor:pointer;display:block;margin:0 auto 14px;height:auto;border-radius:8px;image-rendering:pixelated}
+.vote-show{position:absolute;inset:0;background:var(--slate);display:flex;flex-direction:column;padding:4% 6%;gap:2.2%;z-index:3}
+.vote-show h3{margin:0;font-family:var(--hand);font-size:clamp(22px,4vw,56px);color:var(--chalk-yellow);line-height:1.15}
+.vote-show .vs-sub{font-size:clamp(12px,1.6vw,20px);color:var(--chalk-white);opacity:.8}
+.vote-show .vs-opts{flex:1;display:flex;flex-direction:column;gap:2.5%;justify-content:center}
+.vote-show .vs-opt{position:relative;border:2px solid var(--chalk-white);border-radius:12px;color:var(--chalk-white);background:transparent;font-family:var(--hand);font-size:clamp(18px,3vw,40px);text-align:left;padding:.35em .7em;cursor:pointer;overflow:hidden;min-height:1.9em;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.vote-show .vs-opt i{position:absolute;left:0;top:0;bottom:0;background:color-mix(in srgb,var(--chalk-blue) 45%,transparent);width:0;transition:width .4s}
+.vote-show .vs-opt span,.vote-show .vs-opt b{position:relative}
+.vote-show .vs-opt b{font-family:var(--mono);color:var(--chalk-yellow)}
+.vote-show .vs-opt.win{border-color:var(--chalk-yellow)}
+.vote-show .vs-flash{animation:none}
+@media (prefers-reduced-motion:no-preference){.vote-show .vs-opt:active{transform:scale(.985)}}
+.vote-show .vs-bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.vote-show .vs-bar .btn{min-height:36px}
 .pick-show small{display:block;font-family:var(--body);font-size:14px;color:var(--chalk-white);opacity:.8;margin-top:12px;text-align:center}
 .text-in{position:absolute;min-width:120px;background:rgba(0,0,0,.35);border:1px dashed var(--chalk-white);color:var(--chalk-white);font-family:var(--hand);padding:2px 6px;outline:none;border-radius:4px}
 .drawer{position:absolute;top:0;right:0;bottom:0;width:min(330px,100%);background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:flex;flex-direction:column;z-index:5}
@@ -112,6 +125,7 @@ input[type="search"]{border:1px solid var(--line);border-radius:8px;background:v
     <div class="grp">
       <button class="btn" data-open="timer">計時</button>
       <button class="btn" data-open="pick">抽籤</button>
+      <button class="btn" data-open="vote">投票</button>
       <button class="btn" data-open="shuihen">水痕故事</button>
       <button class="btn" data-open="group">班級群組</button>
       <button class="btn" data-open="bento">訂便當</button>
@@ -126,6 +140,17 @@ input[type="search"]{border:1px solid var(--line);border-radius:8px;background:v
       <canvas id="ink" aria-label="黑板，可用手指或觸控筆書寫"></canvas>
       <div class="timer-pill" id="pill" hidden></div>
       <div class="sh-play" id="sh-play" hidden><iframe id="sh-frame" title="水泥地水痕四格故事" allow="autoplay"></iframe><button class="btn" id="sh-close">回到黑板</button></div>
+      <div class="vote-show" id="vshow" hidden>
+        <h3 id="vs-q"></h3>
+        <div class="vs-sub" id="vs-sub"></div>
+        <div class="vs-opts" id="vs-opts"></div>
+        <div class="vs-bar">
+          <button class="btn" id="vs-undo">收回上一票</button>
+          <button class="btn" id="vs-reveal">公布結果</button>
+          <button class="btn" id="vs-copy">抄到新的一頁</button>
+          <button class="btn" id="vs-close">回到黑板</button>
+        </div>
+      </div>
       <div class="pick-show" id="show" hidden><div><canvas id="show-qr" hidden aria-label="群組網址的 QR code"></canvas><b id="show-name"></b><small>點一下關閉</small></div></div>
     </div>
 
@@ -202,6 +227,22 @@ input[type="search"]{border:1px solid var(--line);border-radius:8px;background:v
         <button class="btn" id="b-qr">表單 QR code 秀在黑板上</button>
         <p class="hint" id="b-msg">同學用手機掃碼填名字和品項，最後把表單的「姓名、部門、品項、備註」四欄複製，貼進小幫手的「批次貼上」就一次登記完。</p>
         <p class="hint">需要空白的訂購單範本？<a href="https://p19691221-web.github.io/bento-calc/lunch-order-template.xlsx" style="color:var(--accent)">下載 Excel 範本</a></p>
+      </div>
+    </aside>
+
+    <aside class="drawer" id="d-vote" hidden aria-labelledby="h-vote">
+      <header><h2 id="h-vote">投票</h2><button class="btn" data-close>收起</button></header>
+      <div class="body">
+        <label class="f">題目<input type="text" id="v-q" value="今天午餐吃什麼？" style="border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:8px 10px;width:100%"></label>
+        <label class="f">選項：一行一個（2 到 6 個）
+          <textarea id="v-opts">便當
+麵
+自助餐</textarea></label>
+        <label class="chk"><input type="radio" name="v-mode" value="hand" checked>舉手數票：老師點選項加一票，票數直接顯示</label>
+        <label class="chk"><input type="radio" name="v-mode" value="secret">不記名：同學輪流上台點，票數先藏起來，按「公布結果」才顯示</label>
+        <button class="btn" id="v-start" style="background:var(--accent);color:var(--accent-fg);border-color:var(--accent)">開始投票</button>
+        <p class="hint" id="v-msg">投票畫面蓋在黑板上；按「回到黑板」可以暫時收起，票數會留著，再按「投票」→「繼續上一次」回來。</p>
+        <button class="btn" id="v-resume" hidden>繼續上一次</button>
       </div>
     </aside>
 
@@ -649,6 +690,55 @@ $("#b-qr").onclick = () => {
   try { new URL(v); } catch { $("#b-msg").textContent = "這不像一個網址，請再檢查一次。"; return; }
   $("#b-form").value = v; try { localStorage.setItem(BKEY, v); } catch {}
   showQR(v);
+};
+
+/* ---------- 投票 ---------- */
+const V = {q: "", opts: [], n: [], log: [], secret: false, shown: false};
+function voteRender() {
+  $("#vs-q").textContent = V.q;
+  const total = V.n.reduce((a, b) => a + b, 0), show = !V.secret || V.shown, mx = Math.max(...V.n);
+  $("#vs-sub").textContent = V.secret && !V.shown ? `不記名投票：點一個選項投一票，已投 ${total} 票` : `共 ${total} 票${V.secret ? "（已公布）" : "　點選項加一票"}`;
+  const box = $("#vs-opts"); box.replaceChildren();
+  V.opts.forEach((o, i) => {
+    const b = document.createElement("button"); b.className = "vs-opt";
+    if (show && total && V.n[i] === mx) b.classList.add("win");
+    const bar = document.createElement("i"); bar.style.width = show && total ? (V.n[i] / total * 100) + "%" : "0";
+    const t = document.createElement("span"); t.textContent = `${i + 1}. ${o}`;
+    const c = document.createElement("b"); c.textContent = show ? `${V.n[i]} 票` : "";
+    b.append(bar, t, c);
+    b.onclick = () => {
+      if (V.secret && V.shown) return;
+      V.n[i]++; V.log.push(i); voteRender();
+      if (V.secret) { const s = $("#vs-sub"); s.textContent = `已收到！共 ${V.log.length} 票，請下一位`; }
+    };
+    box.append(b);
+  });
+  $("#vs-reveal").hidden = !V.secret || V.shown;
+  $("#vs-undo").hidden = !V.log.length || (V.secret && V.shown);
+}
+$("#v-start").onclick = () => {
+  const opts = $("#v-opts").value.split("\n").map(x => x.trim()).filter(Boolean);
+  if (opts.length < 2 || opts.length > 6) { $("#v-msg").textContent = "選項要 2 到 6 個，一行一個。"; return; }
+  V.q = $("#v-q").value.trim() || "投票"; V.opts = opts; V.n = opts.map(() => 0); V.log = [];
+  V.secret = document.querySelector('input[name="v-mode"]:checked').value === "secret"; V.shown = false;
+  document.querySelectorAll(".drawer").forEach(d => d.hidden = true); openD = null;
+  voteRender(); $("#vshow").hidden = false; $("#v-resume").hidden = false;
+};
+$("#v-resume").onclick = () => { document.querySelectorAll(".drawer").forEach(d => d.hidden = true); openD = null; voteRender(); $("#vshow").hidden = false; };
+$("#vs-undo").onclick = () => { const i = V.log.pop(); if (i !== undefined) V.n[i]--; voteRender(); };
+$("#vs-reveal").onclick = () => { V.shown = true; voteRender(); };
+$("#vs-close").onclick = () => { $("#vshow").hidden = true; };
+$("#vs-copy").onclick = () => {
+  const total = V.n.reduce((a, b) => a + b, 0), y = "--chalk-yellow", w = "--chalk-white", bl = "--chalk-blue";
+  const items = [{t: "text", c: y, s: 2, x: 100, y: 150, v: V.q}];
+  const mx = Math.max(...V.n);
+  V.opts.forEach((o, i) => {
+    const yy = 270 + i * 105;
+    items.push({t: "text", c: V.n[i] === mx && total ? y : w, s: 1, x: 100, y: yy, v: `${o}　${V.n[i]} 票`});
+    if (total) items.push({t: "line", c: bl, s: 2, p: [[820, yy - 18], [820 + Math.max(4, 640 * V.n[i] / total), yy - 18]]});
+  });
+  items.push({t: "text", c: "--chalk-dim", s: 0, x: 100, y: 940, v: `共 ${total} 票　${today()}`});
+  S.pages.splice(S.cur + 1, 0, {items}); $("#vshow").hidden = true; go(S.cur + 1);
 };
 
 /* ---------- 下課筆記：每頁轉成圖片 ---------- */
